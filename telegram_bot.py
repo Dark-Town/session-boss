@@ -13,7 +13,7 @@ from telegram.ext import (
 # Load env vars
 load_dotenv()
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-SESSION_SERVER_URL = os.getenv("SESSION_SERVER_URL", "https://session-boss.onrender.com")
+SESSION_SERVER_URL = os.getenv("SESSION_SERVER_URL", "https://session-boss.onrender.com/pair")
 
 logging.basicConfig(level=logging.INFO)
 
