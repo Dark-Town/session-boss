@@ -1,24 +1,25 @@
-FROM node:lts-buster
+FROM node:18-bullseye
 
-# Install dependencies (ffmpeg, imagemagick, webp)
-RUN apt-get update && apt-get install -y \
-  ffmpeg \
-  imagemagick \
-  webp \
-  && rm -rf /var/lib/apt/lists/*
+# Install Python & pip
+RUN apt update && \
+    apt install -y python3 python3-pip
 
-# Set working directory
-WORKDIR /usr/src/app
+# Set work directory
+WORKDIR /app
 
-# Copy and install dependencies
-COPY package*.json ./
-RUN npm install && npm install -g qrcode-terminal pm2
-
-# Copy the rest of your application code
+# Copy all project files
 COPY . .
 
-# Expose the desired port
-EXPOSE 5000
+# Install Node.js dependencies
+WORKDIR /app/session-boss-main
+RUN npm install
 
-# Start the app using PM2 for process management
-CMD ["pm2-runtime", "index.js"]
+# Install Python dependencies
+WORKDIR /app
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+# Expose Node server port
+EXPOSE 7860
+
+# Run both services
+CMD ["bash", "-c", "node session-boss-main/index.js & python3 telegram_bot.py"]
