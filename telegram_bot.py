@@ -1,48 +1,94 @@
+import os
 import logging
 import requests
-import os
 from dotenv import load_dotenv
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram import (
+    Update, InlineKeyboardMarkup, InlineKeyboardButton
+)
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+)
 
-# Load bot token from .env file
+# Load .env vars
 load_dotenv()
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+SESSION_SERVER_URL = os.getenv("SESSION_SERVER_URL")
 
-# Optional: restrict access
-AUTHORIZED_USERS = []  # Example: [123456789]
-
+# Logging
 logging.basicConfig(level=logging.INFO)
 
+# --- Start Command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Send /getcode <phone_number> to get your WhatsApp code.")
+    keyboard = [
+        [InlineKeyboardButton("📥 Get WhatsApp Code", callback_data="get_code")],
+        [InlineKeyboardButton("📊 Vote (Anonymous Poll)", callback_data="poll")],
+        [InlineKeyboardButton("❓ Help", callback_data="help")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
+    try:
+        with open("start.jpg", "rb") as photo:
+            await update.message.reply_photo(
+                photo=photo,
+                caption="🤖 *Welcome to the WhatsApp XMD Bot!*\nUse the buttons below to continue.",
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
+    except FileNotFoundError:
+        await update.message.reply_text(
+            "🤖 *Welcome!*\nUse the buttons below to continue.",
+            parse_mode="Markdown",
+            reply_markup=reply_markup
+        )
+
+# --- Button Click Handler ---
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "get_code":
+        await query.message.reply_text("📱 Send `/getcode <phone_number>` to get your XMD code.", parse_mode="Markdown")
+
+    elif query.data == "poll":
+        await context.bot.send_poll(
+            chat_id=query.message.chat_id,
+            question="Do you like this bot?",
+            options=["Yes 👍", "No 👎", "Needs Improvement 💡"],
+            is_anonymous=True
+        )
+
+    elif query.data == "help":
+        await query.message.reply_text("ℹ️ Just send `/getcode <phone_number>` to get your XMD pairing code.")
+
+# --- Get XMD Code ---
 async def getcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if AUTHORIZED_USERS and user_id not in AUTHORIZED_USERS:
-        await update.message.reply_text("🚫 Access denied.")
-        return
-
     if len(context.args) != 1:
         await update.message.reply_text("Usage: /getcode <phone_number>")
         return
 
     phone_number = context.args[0]
+    url = f"{SESSION_SERVER_URL}/code?number={phone_number}"
 
     try:
-        response = requests.get(f"http://localhost:7860/code?number={phone_number}")
+        response = requests.get(url)
         if response.status_code == 200:
             await update.message.reply_text(f"✅ Your XMD Code:\n{response.text.strip()}")
         else:
-            await update.message.reply_text("❌ Could not get the code. Make sure the server is running.")
+            await update.message.reply_text("❌ Failed to fetch code from server.")
     except Exception as e:
-        logging.error("Error connecting to session server: %s", e)
-        await update.message.reply_text("❌ Server connection error.")
+        logging.exception("Server error:")
+        await update.message.reply_text(f"❌ Server connection error:\n{e}")
 
+# --- Main Bot Start ---
 if __name__ == '__main__':
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    if not BOT_TOKEN:
+        print("❌ Missing TELEGRAM_BOT_TOKEN in .env")
+        exit(1)
+
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(CommandHandler("getcode", getcode))
+
     print("🤖 Telegram bot is running...")
     app.run_polling()
