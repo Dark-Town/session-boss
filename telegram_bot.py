@@ -10,13 +10,15 @@ from telegram.ext import (
     MessageHandler, ContextTypes, filters
 )
 
-# Load env vars
+# Load .env variables
 load_dotenv()
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-SESSION_SERVER_URL = os.getenv("SESSION_SERVER_URL", "https://session-boss.onrender.com/pair")
+SESSION_SERVER_URL = os.getenv("SESSION_SERVER_URL", "https://session-boss.onrender.com")
+MAX_MESSAGE_LENGTH = 4000  # Telegram max is 4096 chars
 
 logging.basicConfig(level=logging.INFO)
 
+# --- Start command with image and buttons ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("📥 Get WhatsApp Code", callback_data="get_code")],
@@ -40,22 +42,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
 
+# --- Handle inline button actions ---
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     if query.data == "get_code":
-        await query.message.reply_text("📱 Send `/getcode <phone_number>` to get your XMD code.", parse_mode="Markdown")
+        await query.message.reply_text("📱 Send `/getcode <phone_number>` to get your WhatsApp session code.", parse_mode="Markdown")
+
     elif query.data == "poll":
         await context.bot.send_poll(
             chat_id=query.message.chat_id,
             question="Do you like this bot?",
-            options=["Yes 👍", "No 👎", "Needs Work 💡"],
+            options=["Yes 👍", "No 👎", "Needs Improvement 💡"],
             is_anonymous=True
         )
-    elif query.data == "help":
-        await query.message.reply_text("ℹ️ Use `/getcode <phone_number>` to get your session code and Mega link.")
 
+    elif query.data == "help":
+        await query.message.reply_text("ℹ️ Use `/getcode <phone_number>` to get your WhatsApp XMD code and Mega link.")
+
+# --- /getcode command ---
 async def getcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 1:
         await update.message.reply_text("Usage: /getcode <phone_number>")
@@ -67,23 +73,30 @@ async def getcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         response = requests.get(url)
         if response.status_code == 200:
-            await update.message.reply_text(f"✅ Session Ready:\n{response.text.strip()}")
+            text = response.text.strip()
+            if len(text) > MAX_MESSAGE_LENGTH:
+                text = text[:MAX_MESSAGE_LENGTH] + "\n\n⚠️ Output truncated due to Telegram limits."
+            await update.message.reply_text(f"✅ Session Ready:\n{text}")
         else:
-            await update.message.reply_text(f"❌ Server error:\nStatus {response.status_code}\n{response.text}")
+            await update.message.reply_text(
+                f"❌ Server error:\nStatus: {response.status_code}\n{response.text[:300]}"
+            )
     except Exception as e:
-        logging.exception("Server error:")
-        await update.message.reply_text(f"❌ Could not connect to server:\n{e}")
+        logging.exception("Server connection error:")
+        await update.message.reply_text(f"❌ Server connection error:\n{e}")
 
+# --- React to any text message ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     if msg.chat.type in ['group', 'supergroup']:
-        await msg.reply_text("👀 I'm active here. Use `/getcode <phone>` to get your WhatsApp code.")
+        await msg.reply_text("👀 I'm active here! Use `/getcode <phone>` to get your WhatsApp XMD code.")
     else:
-        await msg.reply_text("💬 I'm here to help! Try `/getcode <your_number>` to get your session.")
+        await msg.reply_text("💬 Need help? Just use `/getcode <your_number>` to get started.")
 
+# --- Main entry point ---
 if __name__ == '__main__':
     if not BOT_TOKEN:
-        print("❌ Missing TELEGRAM_BOT_TOKEN")
+        print("❌ TELEGRAM_BOT_TOKEN is not set in .env")
         exit(1)
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -91,5 +104,6 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("getcode", getcode))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("🤖 Bot is live.")
+
+    print("🤖 Telegram bot is running...")
     app.run_polling()
