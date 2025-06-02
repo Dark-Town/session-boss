@@ -9,15 +9,14 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 )
 
-# Load .env vars
+# Load credentials
 load_dotenv()
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-SESSION_SERVER_URL = os.getenv("SESSION_SERVER_URL")
+SESSION_SERVER_URL = os.getenv("SESSION_SERVER_URL", "https://session-boss.onrender.com")
 
-# Logging
 logging.basicConfig(level=logging.INFO)
 
-# --- Start Command ---
+# Start command with buttons
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("📥 Get WhatsApp Code", callback_data="get_code")],
@@ -41,7 +40,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
 
-# --- Button Click Handler ---
+# Button clicks
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -58,28 +57,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif query.data == "help":
-        await query.message.reply_text("ℹ️ Just send `/getcode <phone_number>` to get your XMD pairing code.")
+        await query.message.reply_text("ℹ️ Just send `/getcode <phone_number>` to get your WhatsApp code.")
 
-# --- Get XMD Code ---
+# Fetch WhatsApp code
 async def getcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 1:
         await update.message.reply_text("Usage: /getcode <phone_number>")
         return
 
     phone_number = context.args[0]
-    url = f"{SESSION_SERVER_URL}/code?number={phone_number}"
+    url = f"{SESSION_SERVER_URL}/pair/code?number={phone_number}"
 
     try:
         response = requests.get(url)
         if response.status_code == 200:
             await update.message.reply_text(f"✅ Your XMD Code:\n{response.text.strip()}")
         else:
-            await update.message.reply_text("❌ Failed to fetch code from server.")
+            await update.message.reply_text(
+                f"❌ Failed to fetch code from server.\nStatus: {response.status_code}\nResponse: {response.text}"
+            )
     except Exception as e:
-        logging.exception("Server error:")
+        logging.exception("Server connection error:")
         await update.message.reply_text(f"❌ Server connection error:\n{e}")
 
-# --- Main Bot Start ---
+# Main
 if __name__ == '__main__':
     if not BOT_TOKEN:
         print("❌ Missing TELEGRAM_BOT_TOKEN in .env")
