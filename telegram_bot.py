@@ -6,17 +6,18 @@ from telegram import (
     Update, InlineKeyboardMarkup, InlineKeyboardButton
 )
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+    ApplicationBuilder, CommandHandler, CallbackQueryHandler,
+    MessageHandler, ContextTypes, filters
 )
 
-# Load credentials
+# Load environment
 load_dotenv()
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 SESSION_SERVER_URL = os.getenv("SESSION_SERVER_URL", "https://session-boss.onrender.com")
 
 logging.basicConfig(level=logging.INFO)
 
-# Start command with buttons
+# /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("📥 Get WhatsApp Code", callback_data="get_code")],
@@ -40,7 +41,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
 
-# Button clicks
+# Handle inline buttons
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -57,9 +58,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif query.data == "help":
-        await query.message.reply_text("ℹ️ Just send `/getcode <phone_number>` to get your WhatsApp code.")
+        await query.message.reply_text("ℹ️ Use `/getcode <phone_number>` to get your WhatsApp XMD pairing code.")
 
-# Fetch WhatsApp code
+# /getcode command
 async def getcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 1:
         await update.message.reply_text("Usage: /getcode <phone_number>")
@@ -74,11 +75,21 @@ async def getcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"✅ Your XMD Code:\n{response.text.strip()}")
         else:
             await update.message.reply_text(
-                f"❌ Failed to fetch code from server.\nStatus: {response.status_code}\nResponse: {response.text}"
+                f"❌ Failed to fetch code.\nStatus: {response.status_code}\nResponse: {response.text}"
             )
     except Exception as e:
-        logging.exception("Server connection error:")
-        await update.message.reply_text(f"❌ Server connection error:\n{e}")
+        logging.exception("Error fetching code:")
+        await update.message.reply_text(f"❌ Server error:\n{e}")
+
+# React to any message
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    text = msg.text.lower()
+
+    if msg.chat.type in ['group', 'supergroup']:
+        await msg.reply_text("👀 I'm watching this group. Type `/getcode <phone>` to get your XMD code.")
+    else:
+        await msg.reply_text("💬 I'm here to help. Try `/getcode <your_number>` to get started.")
 
 # Main
 if __name__ == '__main__':
@@ -87,9 +98,11 @@ if __name__ == '__main__':
         exit(1)
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(CommandHandler("getcode", getcode))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("🤖 Telegram bot is running...")
+    print("🤖 Telegram bot with auto-reaction is running...")
     app.run_polling()
