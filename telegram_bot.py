@@ -10,14 +10,13 @@ from telegram.ext import (
     MessageHandler, ContextTypes, filters
 )
 
-# Load environment
+# Load env vars
 load_dotenv()
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 SESSION_SERVER_URL = os.getenv("SESSION_SERVER_URL", "https://session-boss.onrender.com")
 
 logging.basicConfig(level=logging.INFO)
 
-# /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("📥 Get WhatsApp Code", callback_data="get_code")],
@@ -41,68 +40,56 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
 
-# Handle inline buttons
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     if query.data == "get_code":
         await query.message.reply_text("📱 Send `/getcode <phone_number>` to get your XMD code.", parse_mode="Markdown")
-
     elif query.data == "poll":
         await context.bot.send_poll(
             chat_id=query.message.chat_id,
             question="Do you like this bot?",
-            options=["Yes 👍", "No 👎", "Needs Improvement 💡"],
+            options=["Yes 👍", "No 👎", "Needs Work 💡"],
             is_anonymous=True
         )
-
     elif query.data == "help":
-        await query.message.reply_text("ℹ️ Use `/getcode <phone_number>` to get your WhatsApp XMD pairing code.")
+        await query.message.reply_text("ℹ️ Use `/getcode <phone_number>` to get your session code and Mega link.")
 
-# /getcode command
 async def getcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 1:
         await update.message.reply_text("Usage: /getcode <phone_number>")
         return
 
-    phone_number = context.args[0]
-    url = f"{SESSION_SERVER_URL}/pair/code?number={phone_number}"
+    phone = context.args[0]
+    url = f"{SESSION_SERVER_URL}/pair/code?number={phone}"
 
     try:
         response = requests.get(url)
         if response.status_code == 200:
-            await update.message.reply_text(f"✅ Your XMD Code:\n{response.text.strip()}")
+            await update.message.reply_text(f"✅ Session Ready:\n{response.text.strip()}")
         else:
-            await update.message.reply_text(
-                f"❌ Failed to fetch code.\nStatus: {response.status_code}\nResponse: {response.text}"
-            )
+            await update.message.reply_text(f"❌ Server error:\nStatus {response.status_code}\n{response.text}")
     except Exception as e:
-        logging.exception("Error fetching code:")
-        await update.message.reply_text(f"❌ Server error:\n{e}")
+        logging.exception("Server error:")
+        await update.message.reply_text(f"❌ Could not connect to server:\n{e}")
 
-# React to any message
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
-    text = msg.text.lower()
-
     if msg.chat.type in ['group', 'supergroup']:
-        await msg.reply_text("👀 I'm watching this group. Type `/getcode <phone>` to get your XMD code.")
+        await msg.reply_text("👀 I'm active here. Use `/getcode <phone>` to get your WhatsApp code.")
     else:
-        await msg.reply_text("💬 I'm here to help. Try `/getcode <your_number>` to get started.")
+        await msg.reply_text("💬 I'm here to help! Try `/getcode <your_number>` to get your session.")
 
-# Main
 if __name__ == '__main__':
     if not BOT_TOKEN:
-        print("❌ Missing TELEGRAM_BOT_TOKEN in .env")
+        print("❌ Missing TELEGRAM_BOT_TOKEN")
         exit(1)
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(CommandHandler("getcode", getcode))
+    app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    print("🤖 Telegram bot with auto-reaction is running...")
+    print("🤖 Bot is live.")
     app.run_polling()
